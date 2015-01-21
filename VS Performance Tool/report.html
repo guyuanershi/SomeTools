@@ -1,0 +1,345 @@
+﻿<!DOCTYPE html>
+
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <style type="text/css">
+        #all {
+            font: 80%/1.45em "Lucida Grande", Verdana, Arial, Helvetica, sans-serif;
+            margin: 0;
+            padding: 0;
+            color: #333;
+            background-color: #fff;
+        }
+
+        #main_container h1 {
+            padding-top: 3em;
+            font-size: 1.5em;
+            font-weight: normal;
+            line-height: 1.8em;
+            color: #4E6CA3;
+            border-bottom: 1px solid #B0BED9;
+            clear: both;
+        }
+
+        #main_container #footer {
+            margin: 50px auto 0 auto;
+            padding: 0;
+            text-align: center;
+        }
+
+        #total_summary {
+            text-align:center;
+            padding-top:20%
+        }
+
+        #main_container {
+            width: 900px;
+            margin: 30px auto;
+            padding: 0;
+        }
+
+        #total, #process {
+            width: 600px;
+            height: 400px;
+            margin: auto;
+            float: left;
+        }
+
+        #process_legend {
+            width: auto;
+            height: auto;
+            margin: 8px auto;
+        }
+		
+		#etab tr:nth-child(odd) {
+			background: #F2F2F2;
+		}
+
+       .reduce {
+            color:green;
+            font:bold;
+        }
+
+        .increase {
+            color: red;
+            font: bold;
+        }
+		
+
+    </style>
+    <title>Performance Data</title>
+</head>
+<body id="all">
+    <h1 style="text-align:center">XXX Performance Data</h1>
+    <div id="main_container">
+		<h1 style="padding-top:1em;">Environment</h1>
+		<table id="etab">
+			<tbody id="ebody"></tbody>
+		</table>
+		
+        <h1>Duration XXX Creation</h1>
+        <div>
+            <div id="total"></div>
+            <div id="total_summary"></div>
+        </div>
+
+        <h1>Individual Process Time</h1>
+        <div>
+            <div id="process"></div>
+            <div id="process_legend" style="margin-left: 0px"></div>
+        </div>
+        
+        <h1>Top 100 Expensive Functions</h1>
+        <table id="ftab" class="functions">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Model</th>
+                    <th>Inclusive Samples</th>
+                    <th>Exclusive Samples</th>
+                </tr>
+            </thead>
+            <tbody id="fbody">
+            </tbody>
+        </table>
+
+        <div id="footer">
+			<p>
+                More detals can be found <a href="./Outputs">here</a>.
+			</p>
+            <hr style="width:80%;color:#00ffff;FILTER: alpha(opacity=100,finishopacity=0,style=3)"/>
+            <p>
+                Yuan @ 2013
+            </p>
+        </div>
+    </div>
+
+    <style type="text/css">
+        @import "./meida/jquery.dataTables.css";
+    </style>
+
+    <script type="text/javascript" src="./meida/js/jquery-1.9.1.min.js"></script>
+    <script type="text/javascript" src="./meida/js/jquery.dataTables.min.js"></script>
+    <script type="text/javascript" src="./meida/js/flotr2.min.js"></script>
+    <script type="text/javascript">
+        var totaltime = new Array(),
+            processtime = new Array(),
+            buildNubmer = new Array(),
+            buildName = '',
+            total_y_max = 0,
+            proc_y_max = 0;
+
+        var lines = {
+                data: totaltime,
+                label: 'Total Time',
+                lines: { show: true },
+                points: { show: true }
+            },
+            bars = {
+                data: [],
+                bars: {
+                    show: true,
+                    barWidth: 0.8,
+                    lineWidth: 0,
+                    fillColor: {
+                        colors: ['#CB4B4B', '#fff'],
+                        start: 'top',
+                        end: 'bottom'
+                    },
+                    fillOpacity: 0.8
+                }
+            },
+            markers = {
+                data: [],
+                markers: {
+                    show: true,
+                    position: 'we'
+                    //labelFormatter: function (o) {
+                    //    if (o.index == 0) return "";
+                    //    var delt = (o.y - totaltime[o.index - 1][1]) / o.y * 100;
+                    //    return (delt < 0) ? "▼ " + Math.abs(delt) + "%" :
+                    //        "▲ " + delt + "%";
+                    //}
+                }
+            };
+
+        function prepareData() {
+            $.get("./Outputs/PerfData.xml", function (xml) {
+				//
+                //read environment info
+                //
+                $(xml).find("Env").each(function () {
+					var ename = $(this).attr('name');
+					var eval = $(this).text();
+					if (ename && eval)
+					$("#ebody").append(
+						"<tr><td><b>" + ename + "</b></td>" +
+						"<td style=\"text-align:right;\">" + eval + "</td></tr>");
+                });
+				
+                //
+                //read total time
+                //
+                $(xml).find("TotalTime").each(function () {
+                    var _totaltime = $(this).text();
+                    var i = 0;
+                    _totaltime.split(",").forEach(function (t) {
+                        var _t = parseInt(t);
+                        if (_t > total_y_max) total_y_max = _t;
+
+                        markers.data.push(new Array(i, _t));
+                        totaltime.push(new Array(i, _t));
+                        bars.data.push(markers.data[markers.data.length - 1][1]);
+                        i++;
+                    });
+                });
+
+                //
+                //read processes time
+                //
+                $(xml).find("Process").each(function () {
+                    var _processname = $(this).attr("name");
+                    var _processtime = $(this).text();
+                    var ps = new Array();
+                    var i = 0;
+                    _processtime.split(",").forEach(function (t) {
+                        var _t = parseInt(t);
+                        if (_t > proc_y_max) proc_y_max = _t;
+                        ps.push(new Array(i++, _t));
+                    });
+                    processtime.push({ data: ps, label: _processname, lines: { show: true }, points: { show: true} });
+                });
+
+                //
+                //read function time
+                //
+                $(xml).find("Function").each(function () {
+                    var fname = $(this).attr("name");
+                    var fmodel = $(this).attr("model");
+                    var fvalues = $(this).text().split("|");
+                    $("#fbody").append(
+                        "<tr><td>" + fname + "</td>" +
+                        "<td>" + fmodel + "</td>" +
+                        "<td>" + fvalues[0] + "</td>" +
+                        "<td>" + fvalues[1] + "</td></tr>")
+                });
+
+                //
+                // read buiold number
+                //
+                $(xml).find("BN").each(function () {
+                    buildName = $(this).attr("name");
+                    var _bn = $(this).text();
+                    var i = 0;
+                    _bn.split(",").forEach(function (b) {
+                        buildNubmer.push(new Array(i++, b));
+                    });
+                });
+            }).done(function () {
+                drawTotalTimeChart();
+                showTotalSummary();
+                drawProcessTimeChar();
+                showFuncsTable();
+            });
+        }
+
+        function drawTotalTimeChart() {
+            var container = document.getElementById("total");
+
+            // Draw Graph
+            Flotr.draw(container, [lines, bars, markers], {
+                HtmlText: false,
+                xaxis: {
+                    ticks: buildNubmer,
+                    labelAngle: 15,
+                    title: 'Build('+ buildName + ')',
+                    max: totaltime.length + 5
+                },
+                yaxis: {
+                    title: 'Seconds',
+                    min: 0,
+                    max: total_y_max * 1.1,
+                    noTicks: 15,
+					tickDecimals: 0
+                },
+                grid: {
+                    verticalLines: false
+                },
+                mouse: {
+                    track: true,
+                    trackDecimals: 0
+                }
+            });
+        }
+
+        function drawProcessTimeChar() {
+            var process = document.getElementById("process");
+            var process_legend = document.getElementById("process_legend");
+			
+			var proc = processtime.sort(function (x, y) {
+                var _x = x.data.slice(-1)[0];
+                var _y = y.data.slice(-1)[0];
+                if (_x[1] > _y[1])
+                    return -1;
+                if (_x[1] < _y[1])
+                    return 1;
+            });
+			
+            // Draw Graph
+            Flotr.draw(process, proc, {
+                HtmlText: false,
+                xaxis: {
+                    ticks: buildNubmer,
+                    labelAngle: 15,
+                    title: 'Build(' + buildName + ')',
+                    noTicks: 100,
+                    max: processtime[0].data.length + 5
+                },
+                yaxis: {
+                    title: 'MilliSeconds',
+                    max: proc_y_max * 1.1,
+                    noTicks: 15,
+					tickDecimals: 0
+                },
+                grid: {
+                    verticalLines: false
+                },
+                legend: {
+                    container: process_legend
+                },
+                mouse: {
+                    track: true,
+                    trackDecimals: 0
+                }
+            });
+        }
+
+        function showTotalSummary() {
+			if (totaltime.length == 1) {
+				$("#total_summary").append("<b>Need one more data at least to caluate the value.</pb");
+			}
+			else if (totaltime.length > 1) {
+				var ts = totaltime.slice(-2);
+				var delt = (ts[1][1] - ts[0][1]) / ts[0][1] * 100;
+				if (delt < 0)
+					$("#total_summary").append("<p>Performance <b class=\"reduce\">▲" + Math.abs(delt).toFixed(2) + "%</b></p>");
+				else
+					$("#total_summary").append("<p>Performance <b class=\"increase\">▼" + Math.abs(delt).toFixed(2) + "%</b></p>");
+					
+			}
+        }
+
+        function showFuncsTable() {
+            $("#ftab").dataTable({
+				"aaSorting" : [[3, "desc"]]
+			});
+        }
+    </script>
+
+    <script type="text/javascript">
+        prepareData();
+    </script>
+</body>
+</html>
